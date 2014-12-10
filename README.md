@@ -1,4 +1,4 @@
-# envterpolate - replace environment variable references
+# envterpolate [![Build Status](https://travis-ci.org/nparry/envterpolate.svg)](https://travis-ci.org/nparry/envterpolate)
 
 Copy standard input to standard output, replacing environment variable
 references with their values. This is essentially the same functionality as
