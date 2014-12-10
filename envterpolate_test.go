@@ -21,3 +21,10 @@ func TestNoVariables(t *testing.T) {
 	})
 	assert.Equal(t, result, "hello world")
 }
+
+func TestSimpleVariable(t *testing.T) {
+	result := subst("hello $WORD world", map[string]string{
+		"WORD": "go",
+	})
+	assert.Equal(t, result, "hello go world")
+}

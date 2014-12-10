@@ -19,21 +19,63 @@ package main
 
 import (
 	"bufio"
-	"io"
+	"bytes"
 	"log"
 	"os"
+	"unicode"
 )
+
+type runeReader interface {
+	ReadRune() (rune, int, error)
+	UnreadRune() error
+}
 
 type runeWriter interface {
 	WriteRune(rune) (int, error)
 }
 
-func substituteVariableReferences(source io.RuneReader, target runeWriter, resolver func(string) string) error {
-	for r, size, _ := source.ReadRune(); size != 0; r, size, _ = source.ReadRune() {
-		if _, err := target.WriteRune(r); err != nil {
+const (
+	INITIAL = iota
+	READING_VAR_NAME
+)
+
+func substituteVariableReferences(source runeReader, target runeWriter, resolver func(string) string) error {
+	buffer := new(bytes.Buffer)
+	state := INITIAL
+	var err error
+	for char, size, _ := source.ReadRune(); size != 0; char, size, _ = source.ReadRune() {
+		switch state {
+		case INITIAL:
+			switch {
+			case char == '$':
+				state = READING_VAR_NAME
+			default:
+				_, err = target.WriteRune(char)
+			}
+		case READING_VAR_NAME:
+			switch {
+			case unicode.IsLetter(char) || unicode.IsDigit(char) || char == '_':
+				buffer.WriteRune(char)
+			default:
+				varName := buffer.String()
+				varValue := resolver(varName)
+				source.UnreadRune()
+				state = INITIAL
+				buffer.Reset()
+				for _, varValueChar := range varValue {
+					if _, err = target.WriteRune(varValueChar); err != nil {
+						break
+					}
+				}
+			}
+		}
+
+		if err != nil {
 			return err
 		}
 	}
+
+	// TODO: Handle left over buffer contents
 
 	return nil
 }
