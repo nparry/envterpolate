@@ -35,8 +35,8 @@ type runeWriter interface {
 }
 
 const (
-	INITIAL = iota
-	READING_VAR_NAME
+	initial = iota
+	readingVarName
 )
 
 func isVarNameCharacter(char rune) bool {
@@ -57,25 +57,25 @@ func outputVarValue(buffer *bytes.Buffer, target runeWriter, resolver func(strin
 
 func substituteVariableReferences(source runeReader, target runeWriter, resolver func(string) string) error {
 	buffer := new(bytes.Buffer)
-	state := INITIAL
-	var err error = nil
+	state := initial
+	var err error
 
 	for char, size, _ := source.ReadRune(); size != 0; char, size, _ = source.ReadRune() {
 		switch state {
-		case INITIAL:
+		case initial:
 			switch {
 			case char == '$':
-				state = READING_VAR_NAME
+				state = readingVarName
 			default:
 				_, err = target.WriteRune(char)
 			}
-		case READING_VAR_NAME:
+		case readingVarName:
 			switch {
 			case isVarNameCharacter(char):
 				buffer.WriteRune(char)
 			default:
 				source.UnreadRune()
-				state = INITIAL
+				state = initial
 				err = outputVarValue(buffer, target, resolver)
 				buffer.Reset()
 			}
@@ -86,7 +86,7 @@ func substituteVariableReferences(source runeReader, target runeWriter, resolver
 		}
 	}
 
-	if state == READING_VAR_NAME {
+	if state == readingVarName {
 		err = outputVarValue(buffer, target, resolver)
 	}
 

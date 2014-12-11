@@ -19,6 +19,11 @@ func subst(input string, vars map[string]string) string {
 	return buf.String()
 }
 
+func TestEmptyInput(t *testing.T) {
+	result := subst("", theWordIsGo)
+	assert.Equal(t, result, "")
+}
+
 func TestNoVariables(t *testing.T) {
 	result := subst("hello world", theWordIsGo)
 	assert.Equal(t, result, "hello world")
@@ -37,4 +42,19 @@ func TestSimpleVariableAtStart(t *testing.T) {
 func TestSimpleVariableAtEnd(t *testing.T) {
 	result := subst("let's $WORD", theWordIsGo)
 	assert.Equal(t, result, "let's go")
+}
+
+func TestOnlyVariable(t *testing.T) {
+	result := subst("$WORD", theWordIsGo)
+	assert.Equal(t, result, "go")
+}
+
+func TestRunOnVariable(t *testing.T) {
+	result := subst("$WORD$WORD$WORD!", theWordIsGo)
+	assert.Equal(t, result, "gogogo!")
+}
+
+func TestRunOnVariableWithNonVariableTextPrefix(t *testing.T) {
+	result := subst("$WORD,no$WORD", theWordIsGo)
+	assert.Equal(t, result, "go,nogo")
 }
