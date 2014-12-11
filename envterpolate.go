@@ -39,10 +39,27 @@ const (
 	READING_VAR_NAME
 )
 
+func isVarNameCharacter(char rune) bool {
+	return unicode.IsLetter(char) || unicode.IsDigit(char) || char == '_'
+}
+
+func outputVarValue(buffer *bytes.Buffer, target runeWriter, resolver func(string) string) error {
+	varName := buffer.String()
+	varValue := resolver(varName)
+	for _, varValueChar := range varValue {
+		if _, err := target.WriteRune(varValueChar); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func substituteVariableReferences(source runeReader, target runeWriter, resolver func(string) string) error {
 	buffer := new(bytes.Buffer)
 	state := INITIAL
-	var err error
+	var err error = nil
+
 	for char, size, _ := source.ReadRune(); size != 0; char, size, _ = source.ReadRune() {
 		switch state {
 		case INITIAL:
@@ -54,19 +71,13 @@ func substituteVariableReferences(source runeReader, target runeWriter, resolver
 			}
 		case READING_VAR_NAME:
 			switch {
-			case unicode.IsLetter(char) || unicode.IsDigit(char) || char == '_':
+			case isVarNameCharacter(char):
 				buffer.WriteRune(char)
 			default:
-				varName := buffer.String()
-				varValue := resolver(varName)
 				source.UnreadRune()
 				state = INITIAL
+				err = outputVarValue(buffer, target, resolver)
 				buffer.Reset()
-				for _, varValueChar := range varValue {
-					if _, err = target.WriteRune(varValueChar); err != nil {
-						break
-					}
-				}
 			}
 		}
 
@@ -75,9 +86,11 @@ func substituteVariableReferences(source runeReader, target runeWriter, resolver
 		}
 	}
 
-	// TODO: Handle left over buffer contents
+	if state == READING_VAR_NAME {
+		err = outputVarValue(buffer, target, resolver)
+	}
 
-	return nil
+	return err
 }
 
 func main() {
