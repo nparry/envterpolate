@@ -58,3 +58,28 @@ func TestRunOnVariableWithNonVariableTextPrefix(t *testing.T) {
 	result := subst("$WORD,no$WORD", theWordIsGo)
 	assert.Equal(t, result, "go,nogo")
 }
+
+func TestSimpleStandAloneDollar(t *testing.T) {
+	result := subst("2 $ for your $WORD thoughts", theWordIsGo)
+	assert.Equal(t, result, "2 $ for your go thoughts")
+}
+
+func TestSimpleStandAloneDollarAtStart(t *testing.T) {
+	result := subst("$ for your $WORD thoughts", theWordIsGo)
+	assert.Equal(t, result, "$ for your go thoughts")
+}
+
+func TestSimpleStandAloneDollarAtEnd(t *testing.T) {
+	result := subst("$WORD, find some $", theWordIsGo)
+	assert.Equal(t, result, "go, find some $")
+}
+
+func TestOnlyStandAloneDollar(t *testing.T) {
+	result := subst("$", theWordIsGo)
+	assert.Equal(t, result, "$")
+}
+
+func TestStandAloneDollarSuffix(t *testing.T) {
+	result := subst("$WORD$", theWordIsGo)
+	assert.Equal(t, result, "go$")
+}

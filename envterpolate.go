@@ -43,11 +43,16 @@ func isVarNameCharacter(char rune) bool {
 	return unicode.IsLetter(char) || unicode.IsDigit(char) || char == '_'
 }
 
-func outputVarValue(buffer *bytes.Buffer, target runeWriter, resolver func(string) string) error {
-	varName := buffer.String()
-	varValue := resolver(varName)
-	for _, varValueChar := range varValue {
-		if _, err := target.WriteRune(varValueChar); err != nil {
+func flushBuffer(buffer *bytes.Buffer, target runeWriter, resolver func(string) string) error {
+	if buffer.Len() == 0 {
+		return outputString("$", target)
+	}
+	return outputString(resolver(buffer.String()), target)
+}
+
+func outputString(s string, target runeWriter) error {
+	for _, char := range s {
+		if _, err := target.WriteRune(char); err != nil {
 			return err
 		}
 	}
@@ -76,7 +81,7 @@ func substituteVariableReferences(source runeReader, target runeWriter, resolver
 			default:
 				source.UnreadRune()
 				state = initial
-				err = outputVarValue(buffer, target, resolver)
+				err = flushBuffer(buffer, target, resolver)
 				buffer.Reset()
 			}
 		}
@@ -87,7 +92,7 @@ func substituteVariableReferences(source runeReader, target runeWriter, resolver
 	}
 
 	if state == readingVarName {
-		err = outputVarValue(buffer, target, resolver)
+		err = flushBuffer(buffer, target, resolver)
 	}
 
 	return err
