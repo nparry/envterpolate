@@ -27,32 +27,52 @@ import (
 
 type runeReader interface {
 	ReadRune() (rune, int, error)
-	UnreadRune() error
 }
 
 type runeWriter interface {
 	WriteRune(rune) (int, error)
 }
 
+type state int
+
 const (
-	initial = iota
+	initial state = iota
 	readingVarName
+	readingBracedVarName
 )
+
+type varNameTokenStatus int
+
+const (
+	complete varNameTokenStatus = iota
+	incomplete
+)
+
+type envterpolator struct {
+	state    state
+	buffer   bytes.Buffer
+	target   runeWriter
+	resolver func(string) string
+}
 
 func isVarNameCharacter(char rune) bool {
 	return unicode.IsLetter(char) || unicode.IsDigit(char) || char == '_'
 }
 
-func flushBuffer(buffer *bytes.Buffer, target runeWriter, resolver func(string) string) error {
-	if buffer.Len() == 0 {
-		return outputString("$", target)
+func standaloneDollarString(varNameTokenStatus varNameTokenStatus, state state) string {
+	switch {
+	case state == readingVarName:
+		return "$"
+	case varNameTokenStatus == incomplete:
+		return "${"
 	}
-	return outputString(resolver(buffer.String()), target)
+
+	return "${}"
 }
 
-func outputString(s string, target runeWriter) error {
+func writeString(s string, target runeWriter) error {
 	for _, char := range s {
-		if _, err := target.WriteRune(char); err != nil {
+		if err := writeRune(char, target); err != nil {
 			return err
 		}
 	}
@@ -60,40 +80,88 @@ func outputString(s string, target runeWriter) error {
 	return nil
 }
 
+func writeRune(char rune, target runeWriter) error {
+	_, err := target.WriteRune(char)
+	return err
+}
+
 func substituteVariableReferences(source runeReader, target runeWriter, resolver func(string) string) error {
-	buffer := new(bytes.Buffer)
-	state := initial
-	var err error
+	et := envterpolator{
+		target:   target,
+		resolver: resolver,
+	}
 
 	for char, size, _ := source.ReadRune(); size != 0; char, size, _ = source.ReadRune() {
-		switch state {
-		case initial:
-			switch {
-			case char == '$':
-				state = readingVarName
-			default:
-				_, err = target.WriteRune(char)
-			}
-		case readingVarName:
-			switch {
-			case isVarNameCharacter(char):
-				buffer.WriteRune(char)
-			default:
-				source.UnreadRune()
-				state = initial
-				err = flushBuffer(buffer, target, resolver)
-				buffer.Reset()
-			}
-		}
-
-		if err != nil {
+		if err := et.processRune(char); err != nil {
 			return err
 		}
 	}
 
-	if state == readingVarName {
-		err = flushBuffer(buffer, target, resolver)
+	return et.endOfInput()
+}
+
+func (et *envterpolator) processRune(char rune) error {
+	switch et.state {
+	case initial:
+		switch {
+		case char == '$':
+			et.state = readingVarName
+		default:
+			return writeRune(char, et.target)
+		}
+	case readingVarName:
+		switch {
+		case isVarNameCharacter(char):
+			return writeRune(char, &et.buffer)
+		case char == '{' && et.buffer.Len() == 0:
+			et.state = readingBracedVarName
+		default:
+			return et.flushBufferAndProcessNextRune(complete, char)
+		}
+	case readingBracedVarName:
+		switch {
+		case isVarNameCharacter(char):
+			return writeRune(char, &et.buffer)
+		case char == '}':
+			return et.flushBuffer(complete)
+		default:
+			return et.flushBufferAndProcessNextRune(incomplete, char)
+		}
 	}
+
+	return nil
+}
+
+func (et *envterpolator) endOfInput() error {
+	if et.state != initial {
+		return et.flushBuffer(incomplete)
+	}
+
+	return nil
+}
+
+func (et *envterpolator) flushBufferAndProcessNextRune(bufferStatus varNameTokenStatus, nextChar rune) error {
+	if err := et.flushBuffer(bufferStatus); err != nil {
+		return err
+	}
+
+	return et.processRune(nextChar)
+}
+
+func (et *envterpolator) flushBuffer(bufferStatus varNameTokenStatus) error {
+	var err error
+
+	switch {
+	case et.buffer.Len() == 0:
+		err = writeString(standaloneDollarString(bufferStatus, et.state), et.target)
+	case et.state == readingBracedVarName && bufferStatus == incomplete:
+		err = writeString("${"+et.buffer.String(), et.target)
+	default:
+		err = writeString(et.resolver(et.buffer.String()), et.target)
+	}
+
+	et.state = initial
+	et.buffer.Reset()
 
 	return err
 }
