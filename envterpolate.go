@@ -20,6 +20,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"flag"
 	"log"
 	"os"
 	"unicode"
@@ -48,11 +49,19 @@ const (
 	incomplete
 )
 
+type undefinedVariableBehavior int
+
+const (
+	remove undefinedVariableBehavior = iota
+	preserve
+)
+
 type envterpolator struct {
-	state    state
-	buffer   bytes.Buffer
-	target   runeWriter
-	resolver func(string) string
+	state             state
+	buffer            bytes.Buffer
+	target            runeWriter
+	undefinedBehavior undefinedVariableBehavior
+	resolver          func(string) string
 }
 
 func isVarNameCharacter(char rune) bool {
@@ -85,10 +94,11 @@ func writeRune(char rune, target runeWriter) error {
 	return err
 }
 
-func substituteVariableReferences(source runeReader, target runeWriter, resolver func(string) string) error {
+func substituteVariableReferences(source runeReader, target runeWriter, undefinedBehavior undefinedVariableBehavior, resolver func(string) string) error {
 	et := envterpolator{
-		target:   target,
-		resolver: resolver,
+		target:            target,
+		undefinedBehavior: undefinedBehavior,
+		resolver:          resolver,
 	}
 
 	for char, size, _ := source.ReadRune(); size != 0; char, size, _ = source.ReadRune() {
@@ -157,7 +167,7 @@ func (et *envterpolator) flushBuffer(bufferStatus varNameTokenStatus) error {
 	case et.state == readingBracedVarName && bufferStatus == incomplete:
 		err = writeString("${"+et.buffer.String(), et.target)
 	default:
-		err = writeString(et.resolver(et.buffer.String()), et.target)
+		err = writeString(et.resolve(et.buffer.String()), et.target)
 	}
 
 	et.state = initial
@@ -166,9 +176,28 @@ func (et *envterpolator) flushBuffer(bufferStatus varNameTokenStatus) error {
 	return err
 }
 
+func (et *envterpolator) resolve(variableName string) string {
+	resolvedValue := et.resolver(variableName)
+	if len(resolvedValue) == 0 && et.undefinedBehavior == preserve {
+		if et.state == readingBracedVarName {
+			return "${" + variableName + "}"
+		}
+		return "$" + variableName
+	}
+	return resolvedValue
+}
+
 func main() {
+	preserveUndefined := flag.Bool("preserve", false, "preserve references to undefined variables")
+	flag.Parse()
+
+	undefinedBehavior := remove
+	if *preserveUndefined {
+		undefinedBehavior = preserve
+	}
+
 	out := bufio.NewWriter(os.Stdout)
-	if err := substituteVariableReferences(bufio.NewReader(os.Stdin), out, os.Getenv); err != nil {
+	if err := substituteVariableReferences(bufio.NewReader(os.Stdin), out, undefinedBehavior, os.Getenv); err != nil {
 		log.Fatal(err)
 	}
 	out.Flush()

@@ -12,8 +12,12 @@ var theWordIsGo = map[string]string{
 
 // Wrap substituteVariableReferences for easy testing
 func subst(input string, vars map[string]string) string {
+	return substitute(input, remove, vars)
+}
+
+func substitute(input string, undefinedBehavior undefinedVariableBehavior, vars map[string]string) string {
 	buf := new(bytes.Buffer)
-	substituteVariableReferences(bytes.NewBufferString(input), buf, func(s string) string {
+	substituteVariableReferences(bytes.NewBufferString(input), buf, undefinedBehavior, func(s string) string {
 		return vars[s]
 	})
 	return buf.String()
@@ -156,4 +160,26 @@ func TestUnclosedBracedDollarWithSuffixAndSubsequentTokens(t *testing.T) {
 func TestDoubleBracedDollar(t *testing.T) {
 	result := subst("this ${{WORD}} should not be touched", theWordIsGo)
 	assert.Equal(t, result, "this ${{WORD}} should not be touched")
+}
+
+func TestUndefinedVariablesAreRemovedByDefault(t *testing.T) {
+	result := subst("nothing $WORD2 to see here", theWordIsGo)
+	assert.Equal(t, result, "nothing  to see here")
+
+	result = subst("nothing ${WORD2} to see here", theWordIsGo)
+	assert.Equal(t, result, "nothing  to see here")
+
+	result = subst("nothing${WORD2}to see here", theWordIsGo)
+	assert.Equal(t, result, "nothingto see here")
+}
+
+func TestUndefinedVariablesArePreservedWhenWanted(t *testing.T) {
+	result := substitute("nothing $WORD2 to see here", preserve, theWordIsGo)
+	assert.Equal(t, result, "nothing $WORD2 to see here")
+
+	result = substitute("nothing ${WORD2} to see here", preserve, theWordIsGo)
+	assert.Equal(t, result, "nothing ${WORD2} to see here")
+
+	result = substitute("nothing${WORD2}to see here", preserve, theWordIsGo)
+	assert.Equal(t, result, "nothing${WORD2}to see here")
 }
