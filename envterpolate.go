@@ -64,8 +64,11 @@ type envterpolator struct {
 	resolver          func(string) string
 }
 
-func isVarNameCharacter(char rune) bool {
-	return unicode.IsLetter(char) || unicode.IsDigit(char) || char == '_'
+func isVarNameCharacter(char rune, isFirstLetter bool) bool {
+	if !isFirstLetter && unicode.IsDigit(char) {
+		return true
+	}
+	return unicode.IsLetter(char) || char == '_'
 }
 
 func standaloneDollarString(varNameTokenStatus varNameTokenStatus, state state) string {
@@ -121,7 +124,7 @@ func (et *envterpolator) processRune(char rune) error {
 		}
 	case readingVarName:
 		switch {
-		case isVarNameCharacter(char):
+		case isVarNameCharacter(char, et.buffer.Len() == 0):
 			return writeRune(char, &et.buffer)
 		case char == '{' && et.buffer.Len() == 0:
 			et.state = readingBracedVarName
@@ -130,7 +133,7 @@ func (et *envterpolator) processRune(char rune) error {
 		}
 	case readingBracedVarName:
 		switch {
-		case isVarNameCharacter(char):
+		case isVarNameCharacter(char, et.buffer.Len() == 0):
 			return writeRune(char, &et.buffer)
 		case char == '}':
 			return et.flushBuffer(complete)

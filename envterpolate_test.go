@@ -10,6 +10,10 @@ var theWordIsGo = map[string]string{
 	"WORD": "go",
 }
 
+var funWithDigits = map[string]string{
+	"FUN1": "gopher",
+}
+
 // Wrap substituteVariableReferences for easy testing
 func subst(input string, vars map[string]string) string {
 	return substitute(input, remove, vars)
@@ -182,4 +186,26 @@ func TestUndefinedVariablesArePreservedWhenWanted(t *testing.T) {
 
 	result = substitute("nothing${WORD2}to see here", preserve, theWordIsGo)
 	assert.Equal(t, result, "nothing${WORD2}to see here")
+}
+
+func TestVariableNamesDontBeginWithADigit(t *testing.T) {
+	result := subst("$1A", theWordIsGo)
+	assert.Equal(t, result, "$1A")
+
+	result = subst("${1A}", theWordIsGo)
+	assert.Equal(t, result, "${1A}")
+}
+
+func TestVariableNamesAllowDigitsAfterFirstCharacter(t *testing.T) {
+	result := subst("$FUN1", funWithDigits)
+	assert.Equal(t, result, "gopher")
+
+	result = subst("${FUN1}", funWithDigits)
+	assert.Equal(t, result, "gopher")
+
+	result = subst("no $FUN2", funWithDigits)
+	assert.Equal(t, result, "no ")
+
+	result = subst("no ${FUN2}", funWithDigits)
+	assert.Equal(t, result, "no ")
 }
